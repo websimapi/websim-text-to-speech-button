@@ -45,227 +45,130 @@
     </style>
 </head>
 <body>
-    <button class="tts-button" id="ttsButton">
-        <svg class="speaker-icon" viewBox="0 0 24 24">
-            <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zm-5.5-2.5L9 15l1.5-1.5L12 15l1.5-1.5L15 15l-1.5 1.5-.75-.75-.75.75zm0-3L9 12l1.5-1.5L12 12l1.5-1.5L15 12l-1.5 1.5-.75-.75-.75.75zm0-3L9 9l1.5-1.5L12 9l1.5-1.5L15 9l-1.5 1.5-.75-.75-.75.75z"/>
-        </svg>
-    </button>
+    <button class="tts-button" id="ttsButton"></button>
 
     <script>
-        class WebSimPromptReader {
-            constructor() {
-                this.button = document.getElementById('ttsButton');
-                this.synth = window.speechSynthesis;
-                this.currentUtterance = null;
-                this.isSpeaking = false;
-                this.textChunks = [];
-                this.currentChunkIndex = 0;
+        document.addEventListener('DOMContentLoaded', () => {
+            const ttsButton = document.getElementById('ttsButton');
+            const synth = window.speechSynthesis;
+            let isSpeaking = false;
+            let textChunks = [];
+            let currentChunkIndex = 0;
 
-                this.button.addEventListener('click', () => this.handleButtonClick());
-            }
+            const iconDefault = `
+                <svg class="speaker-icon" viewBox="0 0 24 24">
+                    <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zm-5.5-2.5L9 15l1.5-1.5L12 15l1.5-1.5L15 15l-1.5 1.5-.75-.75-.75.75zm0-3L9 12l1.5-1.5L12 12l1.5-1.5L15 12l-1.5 1.5-.75-.75-.75.75zm0-3L9 9l1.5-1.5L12 9l1.5-1.5L15 9l-1.5 1.5-.75-.75-.75.75z"/>
+                </svg>`;
 
-            async handleButtonClick() {
-                if (this.isSpeaking) {
-                    this.stopSpeaking();
-                    return;
-                }
+            const iconSpeaking = `
+                <svg class="speaker-icon" viewBox="0 0 24 24" fill="currentColor">
+                   <path d="M0 0h24v24H0z" fill="none"/>
+                   <path d="M6 6h12v12H6z"/>
+                </svg>`;
 
-                try {
-                    const promptData = await this.getCurrentPrompt();
-                    
-                    if (promptData) {
-                        await this.speakPrompt(promptData.prompt);
-                    }
-                } catch (error) {
-                    console.error('Error:', error);
-                    // Optionally, provide user feedback here
-                }
-            }
+            const setButtonState = (state) => {
+                ttsButton.innerHTML = state === 'speaking' ? iconSpeaking : iconDefault;
+            };
 
-            async getCurrentPrompt() {
-                try {
-                    // Get current project info
-                    if (!window.websim) {
-                        throw new Error('WebSim API not available.');
-                    }
-                    const currentProject = await window.websim.getCurrentProject();
-                    if (!currentProject) {
-                        throw new Error('No current project found');
-                    }
+            const stopSpeaking = () => {
+                if (synth.speaking) synth.cancel();
+                isSpeaking = false;
+                setButtonState('default');
+            };
 
-                    // Get project details with current version
-                    const response = await fetch(`/api/v1/projects/${currentProject.id}`);
-                    if (!response.ok) {
-                        throw new Error('Failed to fetch project details');
-                    }
+            const getCurrentPrompt = async () => {
+                if (!window.websim) throw new Error('WebSim API not available.');
+                const currentProject = await window.websim.getCurrentProject();
+                if (!currentProject) throw new Error('No current project found');
+                
+                const response = await fetch(`/api/v1/projects/${currentProject.id}`);
+                if (!response.ok) throw new Error('Failed to fetch project details');
+                
+                const projectData = await response.json();
+                const site = projectData.site;
+                if (!site || !site.prompt) throw new Error('No prompt found for this page');
 
-                    const projectData = await response.json();
-                    const site = projectData.site;
-                    
-                    if (!site || !site.prompt) {
-                        throw new Error('No prompt found for this page');
-                    }
+                return (site.prompt && site.prompt.text) ? site.prompt.text : site.prompt;
+            };
 
-                    // Extract prompt text based on prompt type
-                    let promptText = '';
-                    if (site.prompt && site.prompt.text) {
-                        promptText = site.prompt.text;
-                    } else if (typeof site.prompt === 'string') {
-                        promptText = site.prompt;
-                    } else {
-                        throw new Error('Prompt format not recognized');
-                    }
-
-                    return {
-                        projectId: currentProject.id,
-                        title: currentProject.title || site.title || 'Untitled',
-                        prompt: promptText,
-                        promptType: site.prompt.type || 'unknown',
-                        version: projectData.project_revision?.version || 'current',
-                        url: window.location.href
-                    };
-
-                } catch (error) {
-                    console.error('Error getting current prompt:', error);
-                    throw error;
-                }
-            }
-
-            splitTextIntoChunks(text, maxLength = 200) {
-                if (text.length <= maxLength) {
-                    return [text];
-                }
-
+            const splitTextIntoChunks = (text, maxLength = 200) => {
+                if (text.length <= maxLength) return [text];
+                
                 const chunks = [];
                 const sentences = text.match(/[^.!?]+[.!?]*|[^.!?\n]+(?:\n|$)/g) || [];
 
                 sentences.forEach(sentence => {
                     let currentChunk = sentence.trim();
-                    while(currentChunk.length > maxLength) {
+                    while (currentChunk.length > maxLength) {
                         let splitPoint = currentChunk.lastIndexOf(' ', maxLength);
                         if (splitPoint === -1) splitPoint = maxLength;
                         chunks.push(currentChunk.substring(0, splitPoint));
                         currentChunk = currentChunk.substring(splitPoint).trim();
                     }
-                    if (currentChunk) {
-                        chunks.push(currentChunk);
-                    }
+                    if (currentChunk) chunks.push(currentChunk);
                 });
-
                 return chunks.filter(chunk => chunk.length > 0);
-            }
+            };
 
-            async speakPrompt(text) {
-                return new Promise((resolve, reject) => {
-                    if (!text || text.trim() === '') {
-                        reject(new Error('No text to speak'));
-                        return;
-                    }
-
-                    // Split text into manageable chunks
-                    this.textChunks = this.splitTextIntoChunks(text);
-                    this.currentChunkIndex = 0;
-
-                    // Cancel any existing speech
-                    if (this.synth.speaking) {
-                        this.synth.cancel();
-                    }
-
-                    this.speakNextChunk(resolve, reject);
-                });
-            }
-
-            speakNextChunk(resolve, reject) {
-                if (this.currentChunkIndex >= this.textChunks.length) {
-                    this.isSpeaking = false;
-                    this.setButtonState('default');
-                    resolve();
+            const speakNextChunk = () => {
+                if (currentChunkIndex >= textChunks.length) {
+                    isSpeaking = false;
+                    setButtonState('default');
                     return;
                 }
-
-                const chunk = this.textChunks[this.currentChunkIndex];
+                const chunk = textChunks[currentChunkIndex];
                 const utterance = new SpeechSynthesisUtterance(chunk);
-                
-                // Configure speech settings
                 utterance.rate = 0.9;
                 utterance.pitch = 1;
                 utterance.volume = 0.8;
-
-                // Set up event handlers
                 utterance.onstart = () => {
-                    this.isSpeaking = true;
-                    this.setButtonState('speaking');
+                    isSpeaking = true;
+                    setButtonState('speaking');
                 };
-
                 utterance.onend = () => {
-                    this.currentChunkIndex++;
-                    // Small delay between chunks to prevent issues
-                    setTimeout(() => {
-                        if (this.isSpeaking) { // Check if we were stopped during timeout
-                            this.speakNextChunk(resolve, reject);
-                        }
-                    }, 100);
+                    currentChunkIndex++;
+                    setTimeout(() => { if (isSpeaking) speakNextChunk(); }, 100);
                 };
-
                 utterance.onerror = (event) => {
-                    this.isSpeaking = false;
-                    this.setButtonState('default');
-                    reject(new Error(`Speech synthesis error: ${event.error}`));
+                    console.error(`Speech synthesis error: ${event.error}`);
+                    stopSpeaking();
                 };
+                synth.speak(utterance);
+            };
 
-                this.currentUtterance = utterance;
-                this.synth.speak(utterance);
-            }
+            const speakPrompt = (text) => {
+                if (!text || text.trim() === '') return;
+                if (synth.speaking) synth.cancel();
 
-            stopSpeaking() {
-                if (this.synth.speaking) {
-                    this.synth.cancel();
+                textChunks = splitTextIntoChunks(text);
+                currentChunkIndex = 0;
+                speakNextChunk();
+            };
+
+            ttsButton.addEventListener('click', async () => {
+                if (isSpeaking) {
+                    stopSpeaking();
+                    return;
                 }
-                this.isSpeaking = false;
-                this.textChunks = [];
-                this.currentChunkIndex = 0;
-                this.setButtonState('default');
-            }
-
-            setButtonState(state) {
-                if (state === 'speaking') {
-                    this.button.innerHTML = `
-                        <svg class="speaker-icon" viewBox="0 0 24 24" fill="currentColor">
-                           <path d="M0 0h24v24H0z" fill="none"/>
-                           <path d="M6 6h12v12H6z"/>
-                        </svg>
-                    `;
-                } else {
-                     this.button.innerHTML = `
-                        <svg class="speaker-icon" viewBox="0 0 24 24">
-                            <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zm-5.5-2.5L9 15l1.5-1.5L12 15l1.5-1.5L15 15l-1.5 1.5-.75-.75-.75.75zm0-3L9 12l1.5-1.5L12 12l1.5-1.5L15 12l-1.5 1.5-.75-.75-.75.75zm0-3L9 9l1.5-1.5L12 9l1.5-1.5L15 9l-1.5 1.5-.75-.75-.75.75z"/>
-                        </svg>
-                    `;
+                try {
+                    const promptText = await getCurrentPrompt();
+                    speakPrompt(promptText);
+                } catch (error) {
+                    console.error('Error:', error);
                 }
-            }
-        }
+            });
 
-        // Initialize the prompt reader when the page loads
-        document.addEventListener('DOMContentLoaded', () => {
-            // A bug in some browsers requires a user gesture to start speech synthesis.
-            // We'll resume the context on the first click.
             const resumeSynth = () => {
-                if (window.speechSynthesis.paused) {
-                    window.speechSynthesis.resume();
-                }
+                if (synth.paused) synth.resume();
                 document.removeEventListener('click', resumeSynth);
             };
             document.addEventListener('click', resumeSynth);
-            
-            const reader = new WebSimPromptReader();
-            reader.setButtonState('default'); // Set initial state
-        });
 
-        // Handle page visibility changes to stop speech when tab is hidden
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden && window.speechSynthesis && window.speechSynthesis.speaking) {
-                window.speechSynthesis.cancel();
-            }
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden && isSpeaking) stopSpeaking();
+            });
+
+            setButtonState('default');
         });
     </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
