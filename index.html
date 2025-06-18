@@ -53,112 +53,68 @@
         document.addEventListener('DOMContentLoaded', () => {
             const ttsButton = document.getElementById('ttsButton');
             const synth = window.speechSynthesis;
-            let isSpeaking = false;
-            let textChunks = [];
-            let currentChunkIndex = 0;
+            let isSpeaking = false, textChunks = [], currentChunkIndex = 0;
 
-            const setButtonState = (state) => {
-                ttsButton.textContent = state === 'speaking' ? '⏹️' : '🔊';
-            };
+            const setButtonState = () => ttsButton.textContent = isSpeaking ? '⏹️' : '🔊';
 
             const stopSpeaking = () => {
-                if (synth.speaking) synth.cancel();
+                synth.speaking && synth.cancel();
                 isSpeaking = false;
-                setButtonState('default');
+                setButtonState();
             };
 
             const getCurrentPrompt = async () => {
-                if (!window.websim) throw new Error('WebSim API not available.');
-                const currentProject = await window.websim.getCurrentProject();
-                if (!currentProject) throw new Error('No current project found');
-                
-                const response = await fetch(`/api/v1/projects/${currentProject.id}`);
-                if (!response.ok) throw new Error('Failed to fetch project details');
-                
-                const projectData = await response.json();
-                const site = projectData.site;
-                if (!site || !site.prompt) throw new Error('No prompt found for this page');
-
-                return (site.prompt && site.prompt.text) ? site.prompt.text : site.prompt;
+                const project = await window.websim?.getCurrentProject();
+                if (!project) throw new Error('No project found');
+                const response = await fetch(`/api/v1/projects/${project.id}`);
+                if (!response.ok) throw new Error('Failed to fetch project');
+                const data = await response.json();
+                const prompt = data.site?.prompt;
+                if (!prompt) throw new Error('No prompt found');
+                return prompt.text ?? prompt;
             };
 
-            const splitTextIntoChunks = (text, maxLength = 200) => {
-                if (text.length <= maxLength) return [text];
-                
-                const chunks = [];
-                const sentences = text.match(/[^.!?\n\r]+[.!?\n\r]*|[^.!?\n\r]+/g) || [];
-
-                sentences.forEach(sentence => {
-                    let currentChunk = sentence.trim();
-                    while (currentChunk.length > maxLength) {
-                        let splitPoint = currentChunk.lastIndexOf(' ', maxLength);
-                        if (splitPoint === -1) splitPoint = maxLength;
-                        chunks.push(currentChunk.substring(0, splitPoint));
-                        currentChunk = currentChunk.substring(splitPoint).trim();
-                    }
-                    if (currentChunk) chunks.push(currentChunk);
-                });
-                return chunks.filter(chunk => chunk.length > 0);
-            };
+            const splitText = (text, max = 200) => text.length <= max ? [text] : (text.match(/[^.!?\n\r]+[.!?\n\r]*|[^.!?\n\r]+/g) || []).reduce((acc, sentence) => {
+                let chunk = sentence.trim();
+                while (chunk.length > max) {
+                    const splitPoint = chunk.lastIndexOf(' ', max) > -1 ? chunk.lastIndexOf(' ', max) : max;
+                    acc.push(chunk.substring(0, splitPoint));
+                    chunk = chunk.substring(splitPoint).trim();
+                }
+                chunk && acc.push(chunk);
+                return acc;
+            }, []);
 
             const speakNextChunk = () => {
-                if (!isSpeaking || currentChunkIndex >= textChunks.length) {
-                    stopSpeaking();
-                    return;
-                }
-                const chunk = textChunks[currentChunkIndex];
-                const utterance = new SpeechSynthesisUtterance(chunk);
-                utterance.rate = 0.9;
-                utterance.pitch = 1;
-                utterance.volume = 0.8;
-
-                utterance.onend = () => {
-                    currentChunkIndex++;
-                    speakNextChunk();
-                };
-                utterance.onerror = (event) => {
-                    console.error(`Speech synthesis error: ${event.error}`);
-                    stopSpeaking();
-                };
+                if (!isSpeaking || currentChunkIndex >= textChunks.length) return stopSpeaking();
+                const utterance = new SpeechSynthesisUtterance(textChunks[currentChunkIndex]);
+                Object.assign(utterance, { rate: 0.9, pitch: 1, volume: 0.8 });
+                utterance.onend = () => { currentChunkIndex++; speakNextChunk(); };
+                utterance.onerror = e => { console.error(`Speech error: ${e.error}`); stopSpeaking(); };
                 synth.speak(utterance);
             };
 
             const speakPrompt = (text) => {
-                if (!text || text.trim() === '') return;
-                stopSpeaking(); 
-
+                if (!text?.trim()) return;
+                stopSpeaking();
                 isSpeaking = true;
-                setButtonState('speaking');
-                textChunks = splitTextIntoChunks(text);
+                setButtonState();
+                textChunks = splitText(text);
                 currentChunkIndex = 0;
                 speakNextChunk();
             };
 
             ttsButton.addEventListener('click', async () => {
-                if (isSpeaking) {
-                    stopSpeaking();
-                    return;
-                }
-                try {
-                    const promptText = await getCurrentPrompt();
-                    speakPrompt(promptText);
-                } catch (error) {
-                    console.error('Error:', error);
-                    stopSpeaking();
-                }
+                if (isSpeaking) return stopSpeaking();
+                try { speakPrompt(await getCurrentPrompt()); } 
+                catch (error) { console.error('Error:', error); stopSpeaking(); }
             });
-
-            const resumeSynth = () => {
-                if (synth.paused) synth.resume();
-                document.removeEventListener('click', resumeSynth, true);
-            };
+            
+            const resumeSynth = () => { synth.paused && synth.resume(); document.removeEventListener('click', resumeSynth, true); };
             document.addEventListener('click', resumeSynth, true);
-
-            document.addEventListener('visibilitychange', () => {
-                if (document.hidden && isSpeaking) stopSpeaking();
-            });
-
-            setButtonState('default');
+            document.addEventListener('visibilitychange', () => document.hidden && isSpeaking && stopSpeaking());
+            
+            setButtonState();
         });
     </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
