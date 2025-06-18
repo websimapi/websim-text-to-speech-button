@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text-to-Speech Button</title>
+    <style>
+...existing code...
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: white;
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .tts-button {
+...existing code...
+            right: 20px;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 50%;
+            padding: 8px;
+            cursor: pointer;
+            display: flex;
+...existing code...
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: background-color 0.2s, transform 0.2s;
+        }
+
+        .tts-button:hover {
+            background: #f0f0f0;
+            transform: scale(1.1);
+        }
+
+        .speaker-icon {
+            width: 24px;
+            height: 24px;
+            stroke: #333;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+        
+        main {
+            max-width: 800px;
+            margin: 40px auto;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <main id="content">
+        <h1>A Simple Story</h1>
+        <p>Once upon a time, in a small village nestled between rolling hills, lived a curious developer. They spent their days crafting interactive websites and exploring the vast world of code.</p>
+        <p>One day, they discovered a magical API that could give a voice to their creations. With a few lines of JavaScript, their websites could speak, read stories, and guide users through complex interfaces. This brought a new level of accessibility and engagement to their work, making the web a more inclusive place for everyone.</p>
+    </main>
+
+    <button class="tts-button" id="ttsButton" aria-label="Read page content">
+        <!-- Icon will be set by JavaScript -->
+    </button>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const ttsButton = document.getElementById('ttsButton');
+            const synth = window.speechSynthesis;
+            let isSpeaking = false;
+            let currentUtterances = [];
+
+            const iconSpeaker = `
+                <svg class="speaker-icon" viewBox="0 0 24 24">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                </svg>`;
+            
+            const iconStop = `
+                <svg class="speaker-icon" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12"></rect>
+                </svg>`;
+
+            const setButtonState = (speaking) => {
+                isSpeaking = speaking;
+                ttsButton.innerHTML = speaking ? iconStop : iconSpeaker;
+                ttsButton.setAttribute('aria-label', speaking ? 'Stop reading' : 'Read page content');
+            };
+
+            const stopSpeech = () => {
+                synth.cancel();
+                setButtonState(false);
+            };
+
+            const speakText = (text) => {
+                if (synth.speaking) {
+                    stopSpeech();
+                    return;
+                }
+                if (!text) return;
+
+                const chunks = text.match(/[^.!?]+[.!?]*|[^.!?\n]+(?:\n|$)/g) || [];
+
+                currentUtterances = chunks.map(chunk => {
+                    const utterance = new SpeechSynthesisUtterance(chunk.trim());
+                    utterance.rate = 0.9;
+                    utterance.pitch = 1.1;
+                    return utterance;
+                });
+                
+                if (currentUtterances.length === 0) return;
+
+                currentUtterances[0].onstart = () => setButtonState(true);
+                currentUtterances[currentUtterances.length - 1].onend = () => setButtonState(false);
+                
+                currentUtterances.forEach(u => synth.speak(u));
+            };
+
+            ttsButton.addEventListener('click', () => {
+                if (isSpeaking) {
+                    stopSpeech();
+                } else {
+                    const content = document.getElementById('content')?.innerText;
+                    speakText(content);
+                }
+            });
+            
+            // Set initial state
+            setButtonState(false);
+            
+            // Stop speaking if the tab is hidden
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden && isSpeaking) {
+                    stopSpeech();
+                }
+            });
+        });
+    </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
