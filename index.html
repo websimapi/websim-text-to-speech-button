@@ -24,13 +24,15 @@
             background: white;
             border: 1px solid #ccc;
             border-radius: 4px;
-            padding: 8px;
+            padding: 0;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             width: 38px;
             height: 38px;
+            font-size: 20px;
+            line-height: 1;
         }
 
         .tts-button:hover {
@@ -55,19 +57,8 @@
             let textChunks = [];
             let currentChunkIndex = 0;
 
-            const iconDefault = `
-                <svg class="speaker-icon" viewBox="0 0 24 24">
-                    <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.89 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zm-5.5-2.5L9 15l1.5-1.5L12 15l1.5-1.5L15 15l-1.5 1.5-.75-.75-.75.75zm0-3L9 12l1.5-1.5L12 12l1.5-1.5L15 12l-1.5 1.5-.75-.75-.75.75zm0-3L9 9l1.5-1.5L12 9l1.5-1.5L15 9l-1.5 1.5-.75-.75-.75.75z"/>
-                </svg>`;
-
-            const iconSpeaking = `
-                <svg class="speaker-icon" viewBox="0 0 24 24" fill="currentColor">
-                   <path d="M0 0h24v24H0z" fill="none"/>
-                   <path d="M6 6h12v12H6z"/>
-                </svg>`;
-
             const setButtonState = (state) => {
-                ttsButton.innerHTML = state === 'speaking' ? iconSpeaking : iconDefault;
+                ttsButton.textContent = state === 'speaking' ? '⏹️' : '🔊';
             };
 
             const stopSpeaking = () => {
