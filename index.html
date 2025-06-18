@@ -95,7 +95,7 @@
                 if (text.length <= maxLength) return [text];
                 
                 const chunks = [];
-                const sentences = text.match(/[^.!?]+[.!?]*|[^.!?\n]+(?:\n|$)/g) || [];
+                const sentences = text.match(/[^.!?\n\r]+[.!?\n\r]*|[^.!?\n\r]+/g) || [];
 
                 sentences.forEach(sentence => {
                     let currentChunk = sentence.trim();
@@ -111,9 +111,8 @@
             };
 
             const speakNextChunk = () => {
-                if (currentChunkIndex >= textChunks.length) {
-                    isSpeaking = false;
-                    setButtonState('default');
+                if (!isSpeaking || currentChunkIndex >= textChunks.length) {
+                    stopSpeaking();
                     return;
                 }
                 const chunk = textChunks[currentChunkIndex];
@@ -121,13 +120,10 @@
                 utterance.rate = 0.9;
                 utterance.pitch = 1;
                 utterance.volume = 0.8;
-                utterance.onstart = () => {
-                    isSpeaking = true;
-                    setButtonState('speaking');
-                };
+
                 utterance.onend = () => {
                     currentChunkIndex++;
-                    setTimeout(() => { if (isSpeaking) speakNextChunk(); }, 100);
+                    speakNextChunk();
                 };
                 utterance.onerror = (event) => {
                     console.error(`Speech synthesis error: ${event.error}`);
@@ -138,8 +134,10 @@
 
             const speakPrompt = (text) => {
                 if (!text || text.trim() === '') return;
-                if (synth.speaking) synth.cancel();
+                stopSpeaking(); 
 
+                isSpeaking = true;
+                setButtonState('speaking');
                 textChunks = splitTextIntoChunks(text);
                 currentChunkIndex = 0;
                 speakNextChunk();
@@ -155,14 +153,15 @@
                     speakPrompt(promptText);
                 } catch (error) {
                     console.error('Error:', error);
+                    stopSpeaking();
                 }
             });
 
             const resumeSynth = () => {
                 if (synth.paused) synth.resume();
-                document.removeEventListener('click', resumeSynth);
+                document.removeEventListener('click', resumeSynth, true);
             };
-            document.addEventListener('click', resumeSynth);
+            document.addEventListener('click', resumeSynth, true);
 
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden && isSpeaking) stopSpeaking();
